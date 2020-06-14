@@ -1,12 +1,17 @@
 package com.hp.api.library.service.impl;
 
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -16,21 +21,28 @@ import com.hp.api.framework.service.core.exception.AppCommonException;
 import com.hp.api.framework.service.core.service.BaseService;
 import com.hp.api.framework.service.core.util.CommonUtil;
 import com.hp.api.framework.service.core.util.MongoCommonUtil;
-import com.hp.api.library.entity.model.LibraryUserModel;
+import com.hp.api.library.entity.model.InventoryBookModel;
+import com.hp.api.library.entity.model.IssuedBooksModel;
+import com.hp.api.library.entity.model.ReturnBookModel;
+import com.hp.api.library.entity.model.SchoolLibraryPolicyModel;
 import com.hp.api.library.entity.request.EmbeddedBookRequest;
-import com.hp.api.library.entity.request.GetIssueBookRequest;
+import com.hp.api.library.entity.request.GetInventoryBookRequest;
+import com.hp.api.library.entity.request.InventoryBookRequest;
+import com.hp.api.library.entity.request.InventorySortingRequest;
 import com.hp.api.library.entity.request.IssueBookRequest;
 import com.hp.api.library.entity.request.LibraryBookRequest;
-import com.hp.api.library.entity.request.LibraryUserRequest;
+import com.hp.api.library.entity.request.LibraryPolicyRequest;
 import com.hp.api.library.entity.response.LibraryResponse;
-import com.hp.api.library.persistence.mongo.jpa.model.EmbeddedBookDocument;
-import com.hp.api.library.persistence.mongo.jpa.model.LibraryBookDocument;
-import com.hp.api.library.persistence.mongo.jpa.model.LibraryIssuedBookDocument;
-import com.hp.api.library.persistence.mongo.jpa.model.LibraryUserDocument;
+import com.hp.api.library.persistence.mongo.jpa.model.BookDocument;
+import com.hp.api.library.persistence.mongo.jpa.model.InventoryBookDocument;
+import com.hp.api.library.persistence.mongo.jpa.model.IssuedBookDocument;
+import com.hp.api.library.persistence.mongo.jpa.model.SchoolLibraryPolicyDocument;
+import com.hp.api.library.persistence.mongo.jpa.repository.BookDocumentRepository;
+import com.hp.api.library.persistence.mongo.jpa.repository.InventoryBookDocumentRepository;
 import com.hp.api.library.persistence.mongo.jpa.repository.IssuedBookDocumentRepository;
-import com.hp.api.library.persistence.mongo.jpa.repository.LibraryBookDocumentRepository;
-import com.hp.api.library.persistence.mongo.jpa.repository.LibraryUserDocumentRepository;
+import com.hp.api.library.persistence.mongo.jpa.repository.SchoolLibraryPolicyDocumentRepository;
 import com.hp.api.library.service.api.LibraryService;
+import com.hp.api.library.service.dao.InventoryBookDocumentDAO;
 import com.hp.entity.request.base.BaseRequest;
 import com.hp.entity.response.base.ResponseStatus;
 
@@ -40,96 +52,235 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 	protected final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	@Autowired
-	LibraryBookDocumentRepository libraryBookDocumentRepository;
+	InventoryBookDocumentDAO inventoryBookDocumentDAO;
+
+	@Autowired
+	BookDocumentRepository bookDocumentRepository;
 
 	@Autowired
 	IssuedBookDocumentRepository issuedBookDocumentRepository;
 
 	@Autowired
-	LibraryUserDocumentRepository libraryUserDocumentRepository;
+	InventoryBookDocumentRepository inventoryBookDocumentRepository;
+
+	@Autowired
+	SchoolLibraryPolicyDocumentRepository schoolLibraryPolicyDocumentRepository;
+
+	@Autowired
+	private MongoTemplate mongoTemplate;
 
 	@Timed
 	public LibraryResponse addBook(LibraryBookRequest libraryBookRequest, MultipartFile[] bookImage) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 
 		try {
-			LibraryBookDocument libraryBookDocument = prepareLibraryBookDocument(libraryBookRequest);
-			libraryBookDocumentRepository.save(libraryBookDocument);
+			List<String> iSBNs = new ArrayList<String>();
+			List<EmbeddedBookRequest> embeddedBookRequests = libraryBookRequest.getEmbeddedBooks();
+			embeddedBookRequests.parallelStream().forEach(embeddedBook -> {
+				InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
+						.findByISBN(embeddedBook.getISBN());
+				if (inventoryBookDocument != null) {
+					iSBNs.add(inventoryBookDocument.getISBN());
+				}
+			});
+			if (iSBNs != null && !(iSBNs.isEmpty())) {
+				throw new AppCommonException("these ISBN books already exists" + iSBNs);
+			}
+			BookDocument bookDocument = new BookDocument(libraryBookRequest.getTitle(), libraryBookRequest.getRemarks(),
+					libraryBookRequest.getAuthor(), libraryBookRequest.getPublication(),
+					libraryBookRequest.getSubject(), libraryBookRequest.getCategory(),
+					libraryBookRequest.getKeywords());
+			bookDocument = bookDocumentRepository.save(bookDocument);
+			List<InventoryBookDocument> inventoryBookDocuments = prepareInventoryBookDocument(libraryBookRequest,
+					bookDocument);
+			inventoryBookDocumentRepository.saveAll(inventoryBookDocuments);
+
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
 
 		} catch (Exception e) {
+			logger.error("error while adding library book", e);
 			libraryResponse.setStatus(ResponseStatus.FAILED);
-
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
 		}
 		return libraryResponse;
 	}
 
-	private LibraryBookDocument prepareLibraryBookDocument(LibraryBookRequest libraryBookRequest) {
-		LibraryBookDocument libraryBookDocument = new LibraryBookDocument(libraryBookRequest.getTitle(),
-				libraryBookRequest.getImage(), libraryBookRequest.getRemarks(), libraryBookRequest.getAuthor(),
-				libraryBookRequest.getEmbeddedBooks().size(), libraryBookRequest.getPublication(),
-				libraryBookRequest.getSubject(), libraryBookRequest.getCategory(), libraryBookRequest.getKeywords(),
-				libraryBookRequest.getCost(), libraryBookRequest.getYearOfPublication(),
-				libraryBookRequest.getEdition(), libraryBookRequest.getPurchasing_Date(), libraryBookRequest.getPages(),
-				null, prepareEmbeddedBookDocuments(libraryBookRequest.getEmbeddedBooks()));
-		libraryBookDocument.setCreatedAt(new Date());
-		libraryBookDocument.setUpdatedAt(new Date());
-		if (!CommonUtil.isEmpty(libraryBookRequest.getId())) {
-			libraryBookDocument.setId(libraryBookRequest.getId());
+	private List<InventoryBookDocument> prepareInventoryBookDocument(LibraryBookRequest libraryBookRequest,
+			BookDocument bookDocument) {
+
+		List<InventoryBookDocument> inventoryBookDocuments = new ArrayList<InventoryBookDocument>();
+
+		for (EmbeddedBookRequest embeddedBookRequest : libraryBookRequest.getEmbeddedBooks()) {
+
+			InventoryBookDocument inventoryBookDocument = new InventoryBookDocument(
+					embeddedBookRequest.getShelfRackPosition(), libraryBookRequest.getCost(),
+					libraryBookRequest.getYearOfPublication(), libraryBookRequest.getEdition(),
+					libraryBookRequest.getPurchasing_Date(), libraryBookRequest.getPages(), null, false,
+					embeddedBookRequest.getDDC(), embeddedBookRequest.getISBN(), false, bookDocument);
+			inventoryBookDocument.setCreatedAt(new Date());
+			inventoryBookDocument.setUpdatedAt(new Date());
+			inventoryBookDocuments.add(inventoryBookDocument);
 		}
-		return libraryBookDocument;
-	}
 
-	private List<EmbeddedBookDocument> prepareEmbeddedBookDocuments(List<EmbeddedBookRequest> embeddedBooks) {
-
-		List<EmbeddedBookDocument> embeddedBookDocuments = new ArrayList<EmbeddedBookDocument>();
-		embeddedBooks.parallelStream().forEach(embeddedBook -> {
-			EmbeddedBookDocument embeddedBookDocument = new EmbeddedBookDocument(MongoCommonUtil.newObjectId(),
-					embeddedBook.getShelfRackPosition(), embeddedBook.getDDC(), embeddedBook.getISBN(), false);
-			embeddedBookDocuments.add(embeddedBookDocument);
-		});
-		return embeddedBookDocuments;
+		return inventoryBookDocuments;
 	}
 
 	@Timed
-	public LibraryResponse editBook(LibraryBookRequest libraryBookRequest, MultipartFile[] bookImage) {
+	public LibraryResponse editBook(InventoryBookRequest inventoryBookRequest, MultipartFile[] bookImage) {
 		LibraryResponse libraryResponse = new LibraryResponse();
-
 		try {
-			LibraryBookDocument libraryBookDocument = prepareLibraryBookDocument(libraryBookRequest);
-			libraryBookDocumentRepository.save(libraryBookDocument);
+			if (!inventoryBookRequest.getApplyChangesInAllSameEditionBooks()) {
+				InventoryBookDocument inventoryBookDocument = prepareInventoryBookDocument(inventoryBookRequest);
+				inventoryBookDocumentRepository.save(inventoryBookDocument);
+			} else {
+				List<InventoryBookDocument> inventoryBookDocuments = prepareInventoryBookDocumentList(
+						inventoryBookRequest);
+				inventoryBookDocumentRepository.saveAll(inventoryBookDocuments);
+
+			}
+			List<InventoryBookDocument> inventoryBookDocuments = updateBookDocument(inventoryBookRequest);
+			inventoryBookDocumentRepository.saveAll(inventoryBookDocuments);
+
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
 
 		} catch (Exception e) {
+			logger.error("error while editing library book", e);
 			libraryResponse.setStatus(ResponseStatus.FAILED);
-
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
 		}
 		return libraryResponse;
+	}
+
+	private List<InventoryBookDocument> updateBookDocument(InventoryBookRequest inventoryBookRequest) {
+		Query query = new Query();
+		query.addCriteria(Criteria.where("IsDelete").is(false));
+		query.addCriteria(Criteria.where("BookDocument.Title").is(inventoryBookRequest.getBookRequest().getTitle()));
+		query.addCriteria(Criteria.where("BookDocument.Author").is(inventoryBookRequest.getBookRequest().getAuthor()));
+		List<InventoryBookDocument> inventoryBookDocuments = mongoTemplate.find(query, InventoryBookDocument.class);
+		BookDocument bookDocument = new BookDocument(inventoryBookRequest.getBookRequest().getTitle(),
+				inventoryBookRequest.getBookRequest().getRemarks(), inventoryBookRequest.getBookRequest().getAuthor(),
+				inventoryBookRequest.getBookRequest().getPublication(),
+				inventoryBookRequest.getBookRequest().getSubject(), inventoryBookRequest.getBookRequest().getCategory(),
+				inventoryBookRequest.getBookRequest().getKeywords());
+		if (!CommonUtil.isEmpty(inventoryBookDocuments)) {
+			inventoryBookDocuments.parallelStream().forEach(inventoryBookDocument -> {
+				inventoryBookDocument.setBookDocument(bookDocument);
+			});
+		}
+		return inventoryBookDocuments;
+	}
+
+	private List<InventoryBookDocument> prepareInventoryBookDocumentList(InventoryBookRequest inventoryBookRequest) {
+		Query query = new Query();
+		query.addCriteria(Criteria.where("IsDelete").is(false));
+		query.addCriteria(Criteria.where("Edition").is(inventoryBookRequest.getEdition()));
+		query.addCriteria(Criteria.where("BookDocument.Title").is(inventoryBookRequest.getBookRequest().getTitle()));
+		query.addCriteria(Criteria.where("BookDocument.Author").is(inventoryBookRequest.getBookRequest().getAuthor()));
+		List<InventoryBookDocument> inventoryBookDocuments = mongoTemplate.find(query, InventoryBookDocument.class);
+		List<InventoryBookDocument> inventoryBookDocumentList = new ArrayList<InventoryBookDocument>();
+		if (CommonUtil.isEmpty(inventoryBookDocuments)) {
+			inventoryBookDocuments.parallelStream().forEach(inventoryBookDocument -> {
+				InventoryBookDocument inventoryBookDocumentUpdated = new InventoryBookDocument(
+						inventoryBookRequest.getShelfRackPosition(), inventoryBookRequest.getCost(),
+						inventoryBookRequest.getYearOfPublication(), inventoryBookRequest.getEdition(),
+						inventoryBookRequest.getPurchasing_Date(), inventoryBookRequest.getPages(), null, false,
+						inventoryBookDocument.getDDC(), inventoryBookDocument.getISBN(),
+						inventoryBookDocument.getIsIssue(), inventoryBookDocument.getBookDocument());
+				inventoryBookDocumentUpdated.setId(inventoryBookDocument.getId());
+
+				inventoryBookDocumentList.add(inventoryBookDocumentUpdated);
+			});
+		}
+		return inventoryBookDocuments;
+	}
+
+	private InventoryBookDocument prepareInventoryBookDocument(InventoryBookRequest inventoryBookRequest) {
+		InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
+				.findByISBN(inventoryBookRequest.getISBN());
+
+		InventoryBookDocument inventoryBookDocumentUpdated = new InventoryBookDocument(
+				inventoryBookRequest.getShelfRackPosition(), inventoryBookRequest.getCost(),
+				inventoryBookRequest.getYearOfPublication(), inventoryBookRequest.getEdition(),
+				inventoryBookRequest.getPurchasing_Date(), inventoryBookRequest.getPages(), null, false,
+				inventoryBookRequest.getDDC(), inventoryBookRequest.getISBN(), inventoryBookDocument.getIsIssue(),
+				inventoryBookDocument.getBookDocument());
+		inventoryBookDocumentUpdated.setId(inventoryBookDocument.getId());
+		return inventoryBookDocumentUpdated;
 	}
 
 	@Timed
 	public LibraryResponse deleteBook(String bookId, BaseRequest baseRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
-			LibraryBookDocument libraryBookDocument = libraryBookDocumentRepository
+			InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
 					.findById(MongoCommonUtil.convertStringToObjectId(bookId));
-			libraryBookDocumentRepository.save(libraryBookDocument);
+			inventoryBookDocument.setDeletedAt(new Date());
+			inventoryBookDocument.setIsDelete(true);
+			inventoryBookDocumentRepository.save(inventoryBookDocument);
+
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
 
 		} catch (Exception e) {
+			logger.error("error while deleting library book", e);
 			libraryResponse.setStatus(ResponseStatus.FAILED);
-
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
 		}
 		return libraryResponse;
 	}
 
 	@Timed
-	public LibraryResponse getBook(String title, String author, String publication, String category, String keywords) {
+	public LibraryResponse getBook(GetInventoryBookRequest getInventoryBookRequest) {
 
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
+			Query query = new Query();
+			if (!CommonUtil.isEmpty(getInventoryBookRequest.getTitle())) {
+				query.addCriteria(Criteria.where("BookDocument.Title").is(getInventoryBookRequest.getTitle()));
+			}
+			if (!CommonUtil.isEmpty(getInventoryBookRequest.getAuthor())) {
+				query.addCriteria(Criteria.where("BookDocument.Author").is(getInventoryBookRequest.getAuthor()));
+			}
+
+			if (!CommonUtil.isEmpty(getInventoryBookRequest.getCategory())) {
+				query.addCriteria(Criteria.where("BookDocument.Category").is(getInventoryBookRequest.getCategory()));
+
+			}
+			if (!CommonUtil.isEmpty(getInventoryBookRequest.getKeywords())) {
+				query.addCriteria(Criteria.where("BookDocument.Keywords").is(getInventoryBookRequest.getKeywords()));
+			}
+			if (!CommonUtil.isEmpty(getInventoryBookRequest.getPublication())) {
+				query.addCriteria(
+						Criteria.where("BookDocument.Publication").is(getInventoryBookRequest.getPublication()));
+			}
+			if (!CommonUtil.isEmpty(getInventoryBookRequest.getSubject())) {
+				query.addCriteria(Criteria.where("BookDocument.Subject").is(getInventoryBookRequest.getSubject()));
+			}
+			List<InventoryBookDocument> inventoryBookDocuments = mongoTemplate.find(query, InventoryBookDocument.class);
+			libraryResponse.setInventoryBookDocuments(inventoryBookDocuments);
+
+			libraryResponse.setStatus(ResponseStatus.SUCCESS);
 
 		} catch (Exception e) {
+
+			logger.error("error while getting library book details", e);
+			libraryResponse.setStatus(ResponseStatus.FAILED);
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
+		}
+		return libraryResponse;
+	}
+
+	@Timed
+	public LibraryResponse barcodeScan(String iSBN) {
+
+		LibraryResponse libraryResponse = new LibraryResponse();
+		try {
+			InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository.findByISBN(iSBN);
+			libraryResponse.setInventoryBookDocument(inventoryBookDocument);
+		} catch (Exception e) {
+
+			logger.error("error while getting library book details", e);
+			libraryResponse.setStatus(ResponseStatus.FAILED);
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
 		}
 		return libraryResponse;
 	}
@@ -137,33 +288,24 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 	@Timed
 	public LibraryResponse issueBook(IssueBookRequest issueBookRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
-		LibraryBookDocument libraryBookDocument = new LibraryBookDocument();
 		try {
-			String userId = issueBookRequest.getUserRequestIdentity().getId();
-			LibraryUserDocument libraryUserDocument = libraryUserDocumentRepository.findByUserId(userId);
-			if (libraryUserDocument == null) {
-				throw new AppCommonException("User doesn't has access to library");
-			}
-			String bookIssuedId;
-			if (!CommonUtil.isEmpty(issueBookRequest.getBookId())) {
-				libraryBookDocument = libraryBookDocumentRepository
-						.findById(MongoCommonUtil.convertStringToObjectId(issueBookRequest.getBookId()));
+			issueBookRequest = applySchoolLibraryPolicy(issueBookRequest);
+			validateIssueBookRequest(issueBookRequest);
 
-				LibraryIssuedBookDocument libraryIssuedBookDocument = prepareLibraryIssuedBookDocument(issueBookRequest,
-						libraryBookDocument);
-				issuedBookDocumentRepository.save(libraryIssuedBookDocument);
-				bookIssuedId = libraryIssuedBookDocument.getId();
-				List<String> activeIssuedBooks = new ArrayList<String>();
-				if (!activeIssuedBooks.isEmpty()) {
-					activeIssuedBooks = libraryUserDocument.getActiveIssuedBooks();
-					activeIssuedBooks.add(bookIssuedId);
-				} else {
-					activeIssuedBooks.add(bookIssuedId);
-				}
-				libraryUserDocument.setActiveIssuedBooks(activeIssuedBooks);
+			InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
+					.findById(MongoCommonUtil.convertStringToObjectId(issueBookRequest.getInventoryBookId()));
+			if (inventoryBookDocument != null) {
+				if (inventoryBookDocument.getIsIssue()) {
+					throw new AppCommonException("book is already issued");
+				} else
+					inventoryBookDocument.setIsIssue(true);
+			} else {
+				throw new AppCommonException("there is no such book");
 			}
-			libraryUserDocumentRepository.save(libraryUserDocument);
-			libraryBookDocumentRepository.save(libraryBookDocument);
+			IssuedBookDocument issuedBookDocument = preapreIssuedBookDocument(issueBookRequest);
+			issuedBookDocument.setCreatedAt(new Date());
+			inventoryBookDocumentRepository.save(inventoryBookDocument);
+			issuedBookDocumentRepository.save(issuedBookDocument);
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
 
 		} catch (Exception e) {
@@ -176,132 +318,140 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 		return libraryResponse;
 	}
 
-	private LibraryIssuedBookDocument prepareLibraryIssuedBookDocument(IssueBookRequest issueBookRequest,
-			LibraryBookDocument libraryBookDocument) throws AppCommonException {
+	private void validateIssueBookRequest(IssueBookRequest issueBookRequest) throws AppCommonException {
+		if ((CommonUtil.isEmpty(issueBookRequest.getUserId()) && CommonUtil.isEmpty(issueBookRequest.getStudentId()))
+				|| ((!CommonUtil.isEmpty(issueBookRequest.getUserId()))
+						&& (!CommonUtil.isEmpty(issueBookRequest.getStudentId())))) {
+			throw new AppCommonException("provide either user Id or Student Id");
+		}
 
-		List<EmbeddedBookDocument> embeddedBookDocuments = libraryBookDocument.getEmbeddedBooks();
+		else if (!CommonUtil.isEmpty(issueBookRequest.getUserId())) {
+			List<IssuedBookDocument> issuedBookDocuments = issuedBookDocumentRepository
+					.findByUserIdAndDeletedAtNull(issueBookRequest.getUserId());
+			if (issuedBookDocuments.size() == issueBookRequest.getMaxAllowedBook()) {
+				throw new AppCommonException("already reached max limit");
+			}
 
-		EmbeddedBookDocument embeddedBookDocumentEmpty = new EmbeddedBookDocument();
-		Boolean bookAvailable = false;
-		for (EmbeddedBookDocument embeddedBookDocument : embeddedBookDocuments) {
-			if (!embeddedBookDocument.getIsIssue()) {
-				embeddedBookDocumentEmpty.setDDC(embeddedBookDocument.getDDC());
-				embeddedBookDocumentEmpty.setId(embeddedBookDocument.getId());
-				embeddedBookDocument.setIsIssue(true);
-				embeddedBookDocumentEmpty.setShelfRackPosition(embeddedBookDocument.getShelfRackPosition());
-				embeddedBookDocumentEmpty.setISBN(embeddedBookDocument.getISBN());
-				bookAvailable = true;
-				break;
+		} else {
+			List<IssuedBookDocument> issuedBookDocuments = issuedBookDocumentRepository
+					.findByStudentIdAndDeletedAtNull(issueBookRequest.getStudentId());
+			if (issuedBookDocuments.size() == issueBookRequest.getMaxAllowedBook()) {
+				throw new AppCommonException("already reached max limit");
 			}
 		}
-		if (!bookAvailable) {
-			throw new AppCommonException("all books already issued");
-
-		}
-		libraryBookDocument.setEmbeddedBooks(embeddedBookDocuments);
-
-		LibraryIssuedBookDocument libraryIssuedBookDocument = new LibraryIssuedBookDocument(issueBookRequest.getType(),
-				issueBookRequest.getPersonId(), null, issueBookRequest.getLastDate(), false, issueBookRequest.getFine(),
-				issueBookRequest.getFineReason(), libraryBookDocument.getTitle(), libraryBookDocument.getRemarks(),
-				libraryBookDocument.getAuthor(), libraryBookDocument.getPublication(), libraryBookDocument.getSubject(),
-				embeddedBookDocumentEmpty.getShelfRackPosition(), libraryBookDocument.getCategory(),
-				libraryBookDocument.getKeywords(), embeddedBookDocumentEmpty.getId(), libraryBookDocument.getCost(),
-				libraryBookDocument.getYearOfPublication(), libraryBookDocument.getEdition(),
-				libraryBookDocument.getPurchasing_Date(), libraryBookDocument.getPages(),
-				embeddedBookDocumentEmpty.getDDC(), embeddedBookDocumentEmpty.getISBN());
-
-		if (!CommonUtil.isEmpty(issueBookRequest.getId())) {
-			LibraryIssuedBookDocument libraryIssuedBookDocumentOld = issuedBookDocumentRepository
-					.findById(MongoCommonUtil.convertStringToObjectId(issueBookRequest.getId()));
-			if (libraryIssuedBookDocumentOld != null) {
-				libraryIssuedBookDocument.setId(issueBookRequest.getId());
-			}
-		}
-		return libraryIssuedBookDocument;
 	}
 
-	@Timed
-	public LibraryResponse editIssueBook(IssueBookRequest issueBookRequest) {
-		LibraryResponse libraryResponse = new LibraryResponse();
-		try {
-			if (CommonUtil.isEmpty(issueBookRequest.getBookId())) {
-				LibraryBookDocument libraryBookDocument = libraryBookDocumentRepository
-						.findById(MongoCommonUtil.convertStringToObjectId(issueBookRequest.getBookId()));
+	private IssueBookRequest applySchoolLibraryPolicy(IssueBookRequest issueBookRequest) {
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(new Date());
+		SchoolLibraryPolicyDocument schoolLibraryPolicyDocument = schoolLibraryPolicyDocumentRepository
+				.findBySchoolId(issueBookRequest.getUserRequestIdentity().getSchoolId());
 
-				LibraryIssuedBookDocument libraryIssuedBookDocument = prepareLibraryIssuedBookDocument(issueBookRequest,
-						libraryBookDocument);
+		if (schoolLibraryPolicyDocument.getUserIds().contains(issueBookRequest.getUserId())) {
+			issueBookRequest.setMaxAllowedBook(schoolLibraryPolicyDocument.getMaxAllowedBook().get(1));
+			cal.add(Calendar.DATE, schoolLibraryPolicyDocument.getLastDateOfReturn().get(1));
+			issueBookRequest.setFinePerDay(schoolLibraryPolicyDocument.getFinePerDay().get(1));
+		} else if (schoolLibraryPolicyDocument.getClassIds().contains(issueBookRequest.getUserId())) {
+			issueBookRequest.setMaxAllowedBook(schoolLibraryPolicyDocument.getMaxAllowedBook().get(2));
+			cal.add(Calendar.DATE, schoolLibraryPolicyDocument.getLastDateOfReturn().get(2));
+			issueBookRequest.setFinePerDay(schoolLibraryPolicyDocument.getFinePerDay().get(2));
+		} else if (schoolLibraryPolicyDocument.getStudentIds().contains(issueBookRequest.getUserId())) {
+			issueBookRequest.setMaxAllowedBook(schoolLibraryPolicyDocument.getMaxAllowedBook().get(3));
+			cal.add(Calendar.DATE, schoolLibraryPolicyDocument.getLastDateOfReturn().get(3));
+			issueBookRequest.setFinePerDay(schoolLibraryPolicyDocument.getFinePerDay().get(3));
+		} else {
+			issueBookRequest.setMaxAllowedBook(schoolLibraryPolicyDocument.getMaxAllowedBook().get(0));
+			cal.add(Calendar.DATE, schoolLibraryPolicyDocument.getLastDateOfReturn().get(0));
+			issueBookRequest.setFinePerDay(schoolLibraryPolicyDocument.getFinePerDay().get(0));
+		}
+		issueBookRequest.setLastDate(cal.getTime());
+		return issueBookRequest;
+	}
 
-				issuedBookDocumentRepository.save(libraryIssuedBookDocument);
+	private IssuedBookDocument preapreIssuedBookDocument(IssueBookRequest issueBookRequest) throws AppCommonException {
 
-			}
-			libraryResponse.setStatus(ResponseStatus.SUCCESS);
-		} catch (Exception e) {
-			libraryResponse.setStatus(ResponseStatus.FAILED);
+		IssuedBookDocument issuedBookDocument = new IssuedBookDocument();
+
+		if (!CommonUtil.isEmpty(issueBookRequest.getUserId())) {
+
+			issuedBookDocument = makeIssuedBookDocument(issueBookRequest);
+			issuedBookDocument.setUserId(issueBookRequest.getUserId());
+
+		} else {
+			issuedBookDocument = makeIssuedBookDocument(issueBookRequest);
+			issuedBookDocument.setStudentId(issueBookRequest.getStudentId());
+
 		}
 
-		return libraryResponse;
+		return issuedBookDocument;
+	}
+
+	private IssuedBookDocument makeIssuedBookDocument(IssueBookRequest issueBookRequest) {
+
+		IssuedBookDocument issuedBookDocument = new IssuedBookDocument(null, null,
+				issueBookRequest.getInventoryBookId(), issueBookRequest.getLastDate(), false, 0,
+				issueBookRequest.getFinePerDay(), null, issueBookRequest.getUserRequestIdentity().getSchoolId(), null,
+				false);
+		issuedBookDocument.setUpdatedAt(new Date());
+		return issuedBookDocument;
 	}
 
 	@Timed
 	public LibraryResponse deleteIssuedBook(String issueBookId, BaseRequest baseRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
-			LibraryIssuedBookDocument libraryIssuedBookDocument = issuedBookDocumentRepository
+			IssuedBookDocument issuedBookDocument = issuedBookDocumentRepository
 					.findById(MongoCommonUtil.convertStringToObjectId(issueBookId));
-			if (libraryIssuedBookDocument != null) {
-				libraryIssuedBookDocument.setDeletedAt(new Date());
-				issuedBookDocumentRepository.save(libraryIssuedBookDocument);
+			issuedBookDocument.setDeletedAt(new Date());
+			issuedBookDocument.setIsDelete(true);
+			InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
+					.findById(MongoCommonUtil.convertStringToObjectId(issuedBookDocument.getInventoryId()));
+			if (inventoryBookDocument.getIsIssue()) {
+				inventoryBookDocument.setIsIssue(false);
 			}
+			inventoryBookDocumentRepository.save(inventoryBookDocument);
+			issuedBookDocumentRepository.save(issuedBookDocument);
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
 
 		} catch (Exception e) {
+			logger.error("error while deleting library book", e);
 			libraryResponse.setStatus(ResponseStatus.FAILED);
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
 		}
 		return libraryResponse;
 	}
 
 	@Timed
-	public LibraryResponse returnIssuedBook(String issueBookId, BaseRequest baseRequest) {
+	public LibraryResponse returnIssuedBook(String inventoryId, BaseRequest baseRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
-			LibraryIssuedBookDocument libraryIssuedBookDocument = issuedBookDocumentRepository
-					.findById(MongoCommonUtil.convertStringToObjectId(issueBookId));
-			if (libraryIssuedBookDocument != null) {
-				libraryIssuedBookDocument.setIsReturn(true);
-			} else {
-				throw new AppCommonException("no record found for given book");
-			}
-			LibraryUserDocument libraryUserDocument = libraryUserDocumentRepository
-					.findByUserId(libraryIssuedBookDocument.getPersonId());
-			if (libraryUserDocument == null) {
-				throw new AppCommonException("wrong data saved in collection regarding this book issue");
-			}
-			List<String> activeIssueBooks = libraryUserDocument.getActiveIssuedBooks();
-			List<String> inActiveIssueBooks = new ArrayList<String>();
-			if ((libraryUserDocument.getInActiveIssuedBooks() != null)
-					&& !(libraryUserDocument.getInActiveIssuedBooks().isEmpty())
-					&& libraryUserDocument.getInActiveIssuedBooks().contains(issueBookId)) {
-				throw new AppCommonException("this book already returned");
-			} else if ((libraryUserDocument.getInActiveIssuedBooks() != null)
-					&& (!(libraryUserDocument.getInActiveIssuedBooks().isEmpty()))) {
-				inActiveIssueBooks.addAll(libraryUserDocument.getInActiveIssuedBooks());
+			InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
+					.findById(MongoCommonUtil.convertStringToObjectId(inventoryId));
+			if (inventoryBookDocument == null) {
+				throw new AppCommonException("there is no inventory for this given Id");
+
 			}
 
-			List<String> activeIssueBooksNew = new ArrayList<String>();
-			if (activeIssueBooks.contains(issueBookId)) {
-				activeIssueBooks.parallelStream().forEach(activeIssueBook -> {
-					if (!activeIssueBook.equals(issueBookId)) {
-						activeIssueBooksNew.add(activeIssueBook);
-					}
-				});
-			} else {
-				throw new AppCommonException("there is no such book in user's account");
+			IssuedBookDocument issuedBookDocument = issuedBookDocumentRepository
+					.findByInventoryIdAndDeletedAtNull(inventoryId);
+			if (issuedBookDocument == null) {
+				throw new AppCommonException("this book is not issued");
 			}
-			inActiveIssueBooks.add(issueBookId);
-			libraryUserDocument.setActiveIssuedBooks(activeIssueBooksNew);
-			libraryUserDocument.setInActiveIssuedBooks(inActiveIssueBooks);
-			issuedBookDocumentRepository.save(libraryIssuedBookDocument);
-			libraryUserDocumentRepository.save(libraryUserDocument);
+
+			long diff = new Date().getTime() - issuedBookDocument.getLastDate().getTime();
+			if (diff < 0) {
+				diff = 0;
+			} else {
+				issuedBookDocument.setFineReason("late submission");
+			}
+			float days = (diff / (1000 * 60 * 60 * 24));
+			issuedBookDocument.setFine(days * issuedBookDocument.getFinePerDay());
+			issuedBookDocument.setIsReturn(true);
+			inventoryBookDocument.setIsIssue(false);
+			ReturnBookModel returnBookModel = prepareReturnBookModel(issuedBookDocument);
+			inventoryBookDocumentRepository.save(inventoryBookDocument);
+			issuedBookDocumentRepository.save(issuedBookDocument);
+			libraryResponse.setReturnBookModel(returnBookModel);
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
 
 		} catch (Exception e) {
@@ -312,110 +462,226 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 		return libraryResponse;
 	}
 
-	@Timed
-	public LibraryResponse getissueBookList(GetIssueBookRequest getissueBookRequest) {
-		LibraryResponse libraryResponse = new LibraryResponse();
-		try {
-
-			libraryResponse.setStatus(ResponseStatus.SUCCESS);
-
-		} catch (Exception e) {
-			libraryResponse.setStatus(ResponseStatus.FAILED);
-
-		}
-		return libraryResponse;
+	private ReturnBookModel prepareReturnBookModel(IssuedBookDocument issuedBookDocument) {
+		ReturnBookModel returnBookModel = new ReturnBookModel(issuedBookDocument.getInventoryId(),
+				issuedBookDocument.getLastDate(), issuedBookDocument.getIsReturn(), issuedBookDocument.getFine(),
+				issuedBookDocument.getFineReason());
+		return returnBookModel;
 	}
 
 	@Timed
-	public LibraryResponse addLibraryUser(LibraryUserRequest libraryUserRequest) {
+	public LibraryResponse getissueBookList(BaseRequest baseRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
-			LibraryUserDocument libraryUserDocument = prepareLibraryUserDocument(libraryUserRequest);
-			libraryUserDocumentRepository.save(libraryUserDocument);
-
+			Query query = new Query();
+			query.addCriteria(Criteria.where("IsDeleted").is(false));
+			query.addCriteria(Criteria.where("Return").is(false));
+			query.addCriteria(Criteria.where("SchoolId").is(baseRequest.getUserRequestIdentity().getSchoolId()));
+			List<IssuedBookDocument> issuedBookDocuments = mongoTemplate.find(query, IssuedBookDocument.class);
+//			System.out.println(query);
+//			List<IssuedBookDocument> issuedBookDocuments1 = issuedBookDocumentRepository
+//					.findBySchoolIdAndReturnFalseAndDeletedAtNull(
+//							baseRequest.getUserRequestIdentity().getSchoolId());
+			if (!CommonUtil.isEmpty(issuedBookDocuments))
+				libraryResponse.setIssuedBookDocuments(issuedBookDocuments);
+			else
+				throw new AppCommonException("there is no issued book at the moment");
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
+
 		} catch (Exception e) {
-			logger.error("error while registering library user", e);
+			logger.error("error while getting issued library book details", e);
 			libraryResponse.setStatus(ResponseStatus.FAILED);
 			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
-
 		}
 		return libraryResponse;
 	}
 
-	private LibraryUserDocument prepareLibraryUserDocument(LibraryUserRequest libraryUserRequest) {
-
-		LibraryUserDocument libraryUserDocument = new LibraryUserDocument(libraryUserRequest.getType(),
-				libraryUserRequest.getUserId(), libraryUserRequest.getName(), libraryUserRequest.getImage(), null,
-				libraryUserRequest.getMaxBookAllow(), null, null);
-		if (!CommonUtil.isEmpty(libraryUserRequest.getId())) {
-			LibraryUserDocument libraryUserDocumentOld = libraryUserDocumentRepository
-					.findById(MongoCommonUtil.convertStringToObjectId(libraryUserRequest.getId()));
-			if (!(libraryUserDocumentOld.getActiveIssuedBooks().isEmpty())
-					&& libraryUserDocumentOld.getActiveIssuedBooks() != null) {
-				libraryUserDocument.setActiveIssuedBooks(libraryUserDocumentOld.getActiveIssuedBooks());
-			}
-			if (!(libraryUserDocumentOld.getInActiveIssuedBooks().isEmpty())
-					&& libraryUserDocumentOld.getInActiveIssuedBooks() != null) {
-				libraryUserDocument.setInActiveIssuedBooks(libraryUserDocumentOld.getInActiveIssuedBooks());
-			}
-			libraryUserDocument.setId(libraryUserRequest.getId());
-		}
-
-		return libraryUserDocument;
-	}
-
 	@Timed
-	public LibraryResponse editLibraryUser(LibraryUserRequest libraryUserRequest) {
+	public LibraryResponse addLibraryPolicy(LibraryPolicyRequest libraryPolicyRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
-			LibraryUserDocument libraryUserDocument = prepareLibraryUserDocument(libraryUserRequest);
-			libraryUserDocumentRepository.save(libraryUserDocument);
+			if ((libraryPolicyRequest.getFinePerDay().size() != 4)
+					|| (libraryPolicyRequest.getMaxAllowBook().size() != 4)
+					|| (libraryPolicyRequest.getLastDateOfReturn().size() != 4)) {
+				throw new AppCommonException("provide details for all 4 cases");
+			}
+			validatingLibraryPolicyRequest(libraryPolicyRequest);
+			SchoolLibraryPolicyDocument schoolLibraryPolicyDocument = new SchoolLibraryPolicyDocument();
+			schoolLibraryPolicyDocument = prepareSchoolLibraryPolicyDocument(libraryPolicyRequest);
+			SchoolLibraryPolicyDocument schoolLibraryPolicyDocumentOld = schoolLibraryPolicyDocumentRepository
+					.findBySchoolId(libraryPolicyRequest.getUserRequestIdentity().getSchoolId());
+			schoolLibraryPolicyDocumentOld.setDeletedAt(new Date());
+			schoolLibraryPolicyDocumentOld.setIsDelete(true);
+			schoolLibraryPolicyDocumentRepository.save(schoolLibraryPolicyDocumentOld);
+			schoolLibraryPolicyDocumentRepository.save(schoolLibraryPolicyDocument);
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
 		} catch (Exception e) {
+			logger.error("error while adding library policy", e);
 			libraryResponse.setStatus(ResponseStatus.FAILED);
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
 		}
 		return libraryResponse;
 	}
 
-	@Timed
-	public LibraryResponse getLibraryUser(String userId, BaseRequest baseRequest) {
-		LibraryResponse libraryResponse = new LibraryResponse();
-		try {
-			LibraryUserDocument libraryUserDocument = libraryUserDocumentRepository.findByUserId(userId);
-			if (libraryUserDocument != null) {
-				LibraryUserModel libraryUserModel = new LibraryUserModel(libraryUserDocument.getId(),
-						libraryUserDocument.getUserId(), libraryUserDocument.getName(), libraryUserDocument.getImage(),
-						libraryUserDocument.getType(), libraryUserDocument.getMaxAllowedBook());
-				libraryResponse.setLibraryUserModel(libraryUserModel);
+	private void validatingLibraryPolicyRequest(LibraryPolicyRequest libraryPolicyRequest) throws AppCommonException {
+		if (!CommonUtil.isEmpty(libraryPolicyRequest.getId())) {
+			SchoolLibraryPolicyDocument schoolLibraryPolicyDocumentOld = schoolLibraryPolicyDocumentRepository
+					.findById(MongoCommonUtil.convertStringToObjectId(libraryPolicyRequest.getId()));
+			if (schoolLibraryPolicyDocumentOld == null) {
+				throw new AppCommonException("provide valid document Id");
 			}
+		}
+		if ((libraryPolicyRequest.getFinePerDay().size() != 4) || (libraryPolicyRequest.getMaxAllowBook().size() != 4)
+				|| (libraryPolicyRequest.getLastDateOfReturn().size() != 4)) {
+			throw new AppCommonException("provide details for all 4 cases");
+		}
+
+	}
+
+	private SchoolLibraryPolicyDocument prepareSchoolLibraryPolicyDocument(LibraryPolicyRequest libraryPolicyRequest) {
+		SchoolLibraryPolicyDocument schoolLibraryPolicyDocument = new SchoolLibraryPolicyDocument(
+				libraryPolicyRequest.getUserRequestIdentity().getSchoolId(), libraryPolicyRequest.getUserIds(),
+				libraryPolicyRequest.getClassIds(), libraryPolicyRequest.getStudentIds(),
+				libraryPolicyRequest.getMaxAllowBook(), libraryPolicyRequest.getLastDateOfReturn(),
+				libraryPolicyRequest.getFinePerDay(), null, false);
+		return schoolLibraryPolicyDocument;
+	}
+
+	@Timed
+	public LibraryResponse editLibraryPolicy(LibraryPolicyRequest libraryPolicyRequest) {
+		LibraryResponse libraryResponse = new LibraryResponse();
+		try {
+			validatingLibraryPolicyRequest(libraryPolicyRequest);
+			SchoolLibraryPolicyDocument schoolLibraryPolicyDocument = new SchoolLibraryPolicyDocument();
+			schoolLibraryPolicyDocument = prepareSchoolLibraryPolicyDocument(libraryPolicyRequest);
+			schoolLibraryPolicyDocument.setId(libraryPolicyRequest.getId());
+			schoolLibraryPolicyDocumentRepository.save(schoolLibraryPolicyDocument);
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
-
 		} catch (Exception e) {
+			logger.error("rror while editing library policy", e);
 			libraryResponse.setStatus(ResponseStatus.FAILED);
-
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
 		}
 		return libraryResponse;
 	}
 
 	@Timed
-	public LibraryResponse deleteLibraryUser(String libraryUserId, BaseRequest baseRequest) {
+	public LibraryResponse getLibraryPolicy(BaseRequest baseRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
-			LibraryUserDocument libraryUserDocumentOld = libraryUserDocumentRepository
-					.findById(MongoCommonUtil.convertStringToObjectId(libraryUserId));
+			SchoolLibraryPolicyDocument schoolLibraryPolicyDocument = schoolLibraryPolicyDocumentRepository
+					.findBySchoolId(baseRequest.getUserRequestIdentity().getSchoolId());
+			if (schoolLibraryPolicyDocument != null) {
+				SchoolLibraryPolicyModel schoolLibraryPolicyModel = new SchoolLibraryPolicyModel(
+						schoolLibraryPolicyDocument.getId(), schoolLibraryPolicyDocument.getUserIds(),
+						schoolLibraryPolicyDocument.getClassIds(), schoolLibraryPolicyDocument.getStudentIds(),
+						schoolLibraryPolicyDocument.getMaxAllowedBook(), schoolLibraryPolicyDocument.getFinePerDay(),
+						schoolLibraryPolicyDocument.getLastDateOfReturn());
+				libraryResponse.setSchoolLibraryPolicyModel(schoolLibraryPolicyModel);
+				libraryResponse.setStatus(ResponseStatus.SUCCESS);
+			} else
+				throw new AppCommonException("there is no library policy");
+		} catch (Exception e) {
+			logger.error("error while getting library policy", e);
+			libraryResponse.setStatus(ResponseStatus.FAILED);
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
+		}
+		return libraryResponse;
+	}
 
-			if (libraryUserDocumentOld != null) {
-				libraryUserDocumentOld.setDeletedAt(new Date());
-				libraryUserDocumentRepository.save(libraryUserDocumentOld);
+	@Timed
+	public LibraryResponse deleteLibraryPolicy(BaseRequest baseRequest) {
+		LibraryResponse libraryResponse = new LibraryResponse();
+		try {
+			SchoolLibraryPolicyDocument schoolLibraryPolicyDocument = new SchoolLibraryPolicyDocument();
+			schoolLibraryPolicyDocument = schoolLibraryPolicyDocumentRepository
+					.findBySchoolId(baseRequest.getUserRequestIdentity().getSchoolId());
+			schoolLibraryPolicyDocument.setDeletedAt(new Date());
+			schoolLibraryPolicyDocument.setIsDelete(true);
+			libraryResponse.setStatus(ResponseStatus.SUCCESS);
+		} catch (Exception e) {
+			logger.error("rror while deleting library policy", e);
+			libraryResponse.setStatus(ResponseStatus.FAILED);
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
+		}
+		return libraryResponse;
+	}
+
+	@Timed
+	public LibraryResponse getUserIssuedBookList(String userId, Boolean IsUser, BaseRequest baseRequest) {
+		LibraryResponse libraryResponse = new LibraryResponse();
+		try {
+			List<IssuedBookDocument> issuedBookDocuments = new ArrayList<IssuedBookDocument>();
+			if (IsUser) {
+				issuedBookDocuments = issuedBookDocumentRepository.findByUserIdAndDeletedAtNull(userId);
 			} else {
-
+				issuedBookDocuments = issuedBookDocumentRepository.findByStudentIdAndDeletedAtNull(userId);
 			}
+			if (!CommonUtil.isEmpty(issuedBookDocuments)) {
+				IssuedBooksModel issuedBooksModel = prepareIssuedBooksModel(issuedBookDocuments);
+				libraryResponse.setIssuedBooksModel(issuedBooksModel);
+			} else
+				throw new AppCommonException("there is no issued book at the moment");
+
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
-
 		} catch (Exception e) {
+			logger.error("error while getting user issued book list", e);
 			libraryResponse.setStatus(ResponseStatus.FAILED);
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
+		}
+		return libraryResponse;
+	}
 
+	private IssuedBooksModel prepareIssuedBooksModel(List<IssuedBookDocument> issuedBookDocuments) {
+		IssuedBooksModel issuedBooksModel = new IssuedBooksModel();
+		List<IssuedBookDocument> issuedBookDocumentsActive = new ArrayList<IssuedBookDocument>();
+		List<IssuedBookDocument> issuedBookDocumentsInActive = new ArrayList<IssuedBookDocument>();
+
+		issuedBookDocuments.parallelStream().forEach(issuedBookDocument -> {
+			if (issuedBookDocument.getIsReturn()) {
+				issuedBookDocumentsInActive.add(issuedBookDocument);
+			}
+
+			else {
+				issuedBookDocumentsActive.add(issuedBookDocument);
+			}
+		});
+
+		issuedBooksModel.setIssuedBookModelsActive(issuedBookDocumentsActive);
+		issuedBooksModel.setIssuedBookModelsInActive(issuedBookDocumentsInActive);
+
+		return issuedBooksModel;
+	}
+
+	@Timed
+	public LibraryResponse sortInventoryModels(InventorySortingRequest inventorySortingRequest) {
+		LibraryResponse libraryResponse = new LibraryResponse();
+		try {
+			if (inventorySortingRequest.getSortingBasedOn().equalsIgnoreCase("title")) {
+				Collections.sort(inventorySortingRequest.getInventoryBookModels(), InventoryBookModel.titleComparator);
+			} else if (inventorySortingRequest.getSortingBasedOn().equalsIgnoreCase("author")) {
+				Collections.sort(inventorySortingRequest.getInventoryBookModels(), InventoryBookModel.authorComparator);
+			} else if (inventorySortingRequest.getSortingBasedOn().equalsIgnoreCase("publication")) {
+				Collections.sort(inventorySortingRequest.getInventoryBookModels(),
+						InventoryBookModel.publicationComparator);
+			} else if (inventorySortingRequest.getSortingBasedOn().equalsIgnoreCase("subject")) {
+				Collections.sort(inventorySortingRequest.getInventoryBookModels(),
+						InventoryBookModel.subjectComparator);
+			} else if (inventorySortingRequest.getSortingBasedOn().equalsIgnoreCase("category")) {
+				Collections.sort(inventorySortingRequest.getInventoryBookModels(),
+						InventoryBookModel.categoryComparator);
+			} else if (inventorySortingRequest.getSortingBasedOn().equalsIgnoreCase("keywords")) {
+				Collections.sort(inventorySortingRequest.getInventoryBookModels(),
+						InventoryBookModel.keywordsComparator);
+			} else {
+				throw new AppCommonException("provide valid sorting string");
+			}
+			libraryResponse.setInventoryBookModels(inventorySortingRequest.getInventoryBookModels());
+			libraryResponse.setStatus(ResponseStatus.SUCCESS);
+		} catch (Exception e) {
+			logger.error("error while sorting inventory model list", e);
+			libraryResponse.setStatus(ResponseStatus.FAILED);
+			libraryResponse.addErrorMessage(AppConstant.INVALID_REQUEST_DATA_KEY, e.getMessage());
 		}
 		return libraryResponse;
 	}

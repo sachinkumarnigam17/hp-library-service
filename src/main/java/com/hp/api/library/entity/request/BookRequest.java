@@ -1,8 +1,5 @@
 package com.hp.api.library.entity.request;
 
-import java.util.Date;
-import java.util.List;
-
 import javax.validation.constraints.NotNull;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -17,17 +14,11 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class LibraryBookRequest extends BaseRequest {
-
-	@JsonProperty("id")
-	private String id;
+public class BookRequest extends BaseRequest {
 
 	@NotNull(message = "title can't be empty")
 	@JsonProperty("title")
 	private String title;
-
-	@JsonProperty("image")
-	private String image;
 
 	@JsonProperty("remarks")
 	private String remarks;
@@ -38,7 +29,7 @@ public class LibraryBookRequest extends BaseRequest {
 
 	@NotNull(message = "publication can't be empty")
 	@JsonProperty("publication")
-	private String Publication;// drop down(cos of mispelling)
+	private String Publication;
 
 	@NotNull(message = "subject can't be empty")
 	@JsonProperty("subject")
@@ -48,28 +39,7 @@ public class LibraryBookRequest extends BaseRequest {
 	@JsonProperty("category")
 	private String category;
 
-	@NotNull(message = "keywords can't be empty")
 	@JsonProperty("keywords")
 	private String keywords;
-
-	@JsonProperty("cost")
-	private String cost;
-
-	@JsonProperty("year_of_publication")
-	private String yearOfPublication;
-
-	@NotNull(message = "edition can't be empty")
-	@JsonProperty("edition")
-	private String edition;
-
-	@JsonProperty("purchasing_date")
-	private Date purchasing_Date;
-
-	@NotNull(message = "pages can't be empty")
-	@JsonProperty("pages")
-	private String pages;
-
-	@JsonProperty("embeddedBooks")
-	private List<EmbeddedBookRequest> embeddedBooks;
 
 }

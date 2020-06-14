@@ -12,10 +12,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.hp.api.framework.service.core.controller.AppController;
-import com.hp.api.library.entity.request.GetIssueBookRequest;
+import com.hp.api.library.entity.request.GetInventoryBookRequest;
+import com.hp.api.library.entity.request.InventoryBookRequest;
+import com.hp.api.library.entity.request.InventorySortingRequest;
 import com.hp.api.library.entity.request.IssueBookRequest;
 import com.hp.api.library.entity.request.LibraryBookRequest;
-import com.hp.api.library.entity.request.LibraryUserRequest;
+import com.hp.api.library.entity.request.LibraryPolicyRequest;
 import com.hp.api.library.entity.response.LibraryResponse;
 import com.hp.api.library.service.api.LibraryService;
 import com.hp.entity.request.base.BaseRequest;
@@ -34,19 +36,16 @@ public class LibraryController extends AppController {
 	}
 
 	@RequestMapping(value = "/edit_book", method = RequestMethod.POST)
-	public LibraryResponse editBook(@RequestPart("libraryBookRequest") @Valid LibraryBookRequest libraryBookRequest,
+	public LibraryResponse editBook(@RequestPart("libraryBookRequest") @Valid InventoryBookRequest inventoryBookRequest,
 			@RequestParam("bookImage") MultipartFile[] bookImage) {
-		libraryBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.editBook(libraryBookRequest, bookImage);
+		inventoryBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.editBook(inventoryBookRequest, bookImage);
 	}
 
 	@RequestMapping(value = "/get_book", method = RequestMethod.POST)
-	public LibraryResponse getBook(@RequestParam("title") @Valid String title,
-			@RequestParam("author") @Valid String author, @RequestParam("publication") @Valid String publication,
-			@RequestParam("category") @Valid String category, @RequestParam("keywords") @Valid String keywords) {
-		BaseRequest request = new BaseRequest();
-		request.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.getBook(title, author, publication, category, keywords);
+	public LibraryResponse getBook(@RequestBody @Valid GetInventoryBookRequest getInventoryBookRequest) {
+		getInventoryBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.getBook(getInventoryBookRequest);
 	}
 
 	@RequestMapping(value = "/delete_book", method = RequestMethod.POST)
@@ -56,30 +55,37 @@ public class LibraryController extends AppController {
 		return libraryService.deleteBook(bookId, baseRequest);
 	}
 
-	@RequestMapping(value = "/register_user", method = RequestMethod.POST)
-	public LibraryResponse addLibraryUser(@RequestBody @Valid LibraryUserRequest registerUserRequest) {
-		registerUserRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.addLibraryUser(registerUserRequest);
+	@RequestMapping(value = "/add_library_policy", method = RequestMethod.POST)
+	public LibraryResponse addLibraryPolicy(@RequestBody @Valid LibraryPolicyRequest libraryPolicyRequest) {
+		libraryPolicyRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.addLibraryPolicy(libraryPolicyRequest);
 	}
 
-	@RequestMapping(value = "/edit_register_user", method = RequestMethod.POST)
-	public LibraryResponse editLibraryUser(@RequestBody @Valid LibraryUserRequest registerUserRequest) {
-		registerUserRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.editLibraryUser(registerUserRequest);
+	@RequestMapping(value = "/edit_library_policy", method = RequestMethod.POST)
+	public LibraryResponse editLibraryPolicy(@RequestBody @Valid LibraryPolicyRequest libraryPolicyRequest) {
+		libraryPolicyRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.editLibraryPolicy(libraryPolicyRequest);
 	}
 
-	@RequestMapping(value = "/get_register_user", method = RequestMethod.POST)
-	public LibraryResponse getLibraryUser(@RequestParam("userId") @Valid String userId) {
+	@RequestMapping(value = "/get_library_policy", method = RequestMethod.POST)
+	public LibraryResponse getLibraryPolicy() {
 		BaseRequest baseRequest = new BaseRequest();
 		baseRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.getLibraryUser(userId, baseRequest);
+		return libraryService.getLibraryPolicy(baseRequest);
 	}
 
-	@RequestMapping(value = "/delete_library_user", method = RequestMethod.POST)
-	public LibraryResponse deleteLibraryUser(@RequestParam("libraryUserId") @Valid String libraryUserId) {
+	@RequestMapping(value = "/delete_library_policy", method = RequestMethod.POST)
+	public LibraryResponse deleteLibraryPolicy() {
 		BaseRequest baseRequest = new BaseRequest();
 		baseRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.deleteLibraryUser(libraryUserId, baseRequest);
+		return libraryService.deleteLibraryPolicy(baseRequest);
+	}
+
+	@RequestMapping(value = "/barcode_scan", method = RequestMethod.POST)
+	public LibraryResponse barcodeScan(@RequestParam("iSBN") @Valid String iSBN) {
+		BaseRequest baseRequest = new BaseRequest();
+		baseRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.barcodeScan(iSBN);
 	}
 
 	@RequestMapping(value = "/issue_book", method = RequestMethod.POST)
@@ -88,11 +94,11 @@ public class LibraryController extends AppController {
 		return libraryService.issueBook(issueBookRequest);
 	}
 
-	@RequestMapping(value = "/edit_issue_book", method = RequestMethod.POST)
-	public LibraryResponse editIssueBook(@RequestBody @Valid IssueBookRequest issueBookRequest) {
-		issueBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.editIssueBook(issueBookRequest);
-	}
+//	@RequestMapping(value = "/edit_issue_book", method = RequestMethod.POST)
+//	public LibraryResponse editIssueBook(@RequestBody @Valid IssueBookRequest issueBookRequest) {
+//		issueBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+//		return libraryService.editIssueBook(issueBookRequest);
+//	}
 
 	@RequestMapping(value = "/delete_issue_book", method = RequestMethod.POST)
 	public LibraryResponse deleteIssuedBook(@RequestParam("issueBookId") @Valid String issueBookId) {
@@ -102,16 +108,31 @@ public class LibraryController extends AppController {
 	}
 
 	@RequestMapping(value = "/return_issue_book", method = RequestMethod.POST)
-	public LibraryResponse returnIssuedBook(@RequestParam("issueBookId") @Valid String issueBookId) {
+	public LibraryResponse returnIssuedBook(@RequestParam("inventoryId") @Valid String inventoryId) {
 		BaseRequest baseRequest = new BaseRequest();
 		baseRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.returnIssuedBook(issueBookId, baseRequest);
+		return libraryService.returnIssuedBook(inventoryId, baseRequest);
 	}
 
 	@RequestMapping(value = "/get_issued_book_list", method = RequestMethod.POST)
-	public LibraryResponse getissueBookList(@RequestBody @Valid GetIssueBookRequest getissueBookRequest) {
-		getissueBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.getissueBookList(getissueBookRequest);
+	public LibraryResponse getissueBookList() {
+		BaseRequest baseRequest = new BaseRequest();
+		baseRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.getissueBookList(baseRequest);
+	}
+
+	@RequestMapping(value = "/get_user_issued_book_list", method = RequestMethod.POST)
+	public LibraryResponse getUserIssuedBookList(@RequestParam("userId") @Valid String userId,
+			@RequestParam("IsUser") @Valid Boolean IsUser) {
+		BaseRequest baseRequest = new BaseRequest();
+		baseRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.getUserIssuedBookList(userId, IsUser, baseRequest);
+	}
+
+	@RequestMapping(value = "/sort_inventory_models", method = RequestMethod.POST)
+	public LibraryResponse sortInventoryModels(@RequestBody @Valid InventorySortingRequest inventorySortingRequest) {
+		inventorySortingRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.sortInventoryModels(inventorySortingRequest);
 	}
 
 }

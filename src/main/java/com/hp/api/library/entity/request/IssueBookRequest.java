@@ -2,9 +2,7 @@ package com.hp.api.library.entity.request;
 
 import java.util.Date;
 
-import javax.validation.constraints.NotNull;
-
-import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hp.entity.request.base.BaseRequest;
 
@@ -22,24 +20,28 @@ public class IssueBookRequest extends BaseRequest {
 	@JsonProperty("id")
 	private String id;
 
-	@JsonProperty("book_id")
-	private String bookId;
+	@JsonProperty("user_id")
+	private String userId;
 
-	@JsonProperty("Type")
-	private Boolean type;
+	@JsonProperty("student_id")
+	private String studentId;
 
-	@JsonProperty("PersonId")
-	private String personId;
+	@JsonProperty("inventory_book_id")
+	private String inventoryBookId;
 
-	@NotNull(message = "the return date should not null")
-	@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
-	@JsonProperty("LastDate")
+	@JsonIgnore
 	private Date lastDate;
 
-	@JsonProperty("Fine")
-	private Integer fine;
+	@JsonIgnore
+	private int maxAllowedBook;
 
-	@JsonProperty("FineReason")
-	private String fineReason;
+	@JsonIgnore
+	private float fine;
+
+	@JsonIgnore
+	private float finePerDay;
+
+	@JsonIgnore
+	private Boolean IsReturn;
 
 }

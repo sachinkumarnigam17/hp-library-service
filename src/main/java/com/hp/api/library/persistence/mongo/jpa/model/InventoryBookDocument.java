@@ -1,7 +1,6 @@
 package com.hp.api.library.persistence.mongo.jpa.model;
 
 import java.util.Date;
-import java.util.List;
 
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
@@ -17,35 +16,11 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "librarybook")
-public class LibraryBookDocument extends AuditEntity {
+@Document(collection = "inventorybook")
+public class InventoryBookDocument extends AuditEntity {
 
-	@Field("Title")
-	private String title;
-
-	@Field("Image")
-	private String image;
-
-	@Field("Remarks")
-	private String remarks;
-
-	@Field("Author")
-	private String author;
-
-	@Field("Quantity")
-	private Integer quantity;
-
-	@Field("Publication")
-	private String Publication;// drop down(cos of mispelling)
-
-	@Field("Subject")
-	private String subject;
-
-	@Field("Category")
-	private String category;
-
-	@Field("Keywords")
-	private String keywords;
+	@Field("ShelfRackPosition")
+	private String shelfRackPosition;
 
 	@Field("Cost")
 	private String cost;
@@ -65,7 +40,18 @@ public class LibraryBookDocument extends AuditEntity {
 	@Field("DeletedAt")
 	private Date deletedAt;
 
-	@Field("EmbeddedBooks")
-	private List<EmbeddedBookDocument> embeddedBooks;
+	@Field("IsDelete")
+	private Boolean IsDelete;
 
+	@Field("DDC")
+	private String dDC;
+
+	@Field("ISBN")
+	private String iSBN;
+
+	@Field("IsIssue")
+	private Boolean IsIssue;
+
+	@Field("BookDocument")
+	private BookDocument bookDocument;
 }

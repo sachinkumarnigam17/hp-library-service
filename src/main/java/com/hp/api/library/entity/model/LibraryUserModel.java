@@ -16,7 +16,7 @@ public class LibraryUserModel {
 	@JsonProperty("id")
 	private String id;
 
-	@JsonProperty("userId")
+	@JsonProperty("user_id")
 	private String userId;
 
 	@JsonProperty("name")
