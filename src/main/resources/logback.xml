@@ -15,11 +15,11 @@
 
 	<appender name="INFO_FILE"
 		class="ch.qos.logback.core.rolling.RollingFileAppender">
-		<file>${LOG_PATH}/hp-event-api-info.log</file>
+		<file>${LOG_PATH}/hp-library-api-info.log</file>
 		<rollingPolicy
 			class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
 			<!-- daily rollover -->
-			<fileNamePattern>${LOG_PATH}/hp-event-api-info-%d{yyyy-MM-dd}.%i.log
+			<fileNamePattern>${LOG_PATH}/hp-library-api-info-%d{yyyy-MM-dd}.%i.log
 			</fileNamePattern>
 			<timeBasedFileNamingAndTriggeringPolicy
 				class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
@@ -43,11 +43,11 @@
 
 	<appender name="ERROR_FILE"
 		class="ch.qos.logback.core.rolling.RollingFileAppender">
-		<file>${LOG_PATH}/hp-event-api-error.log</file>
+		<file>${LOG_PATH}/hp-library-api-error.log</file>
 		<rollingPolicy
 			class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
 			<!-- daily rollover -->
-			<fileNamePattern>${LOG_PATH}/hp-event-api-error-%d{yyyy-MM-dd}.%i.log
+			<fileNamePattern>${LOG_PATH}/hp-library-api-error-%d{yyyy-MM-dd}.%i.log
 			</fileNamePattern>
 			<timeBasedFileNamingAndTriggeringPolicy
 				class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
