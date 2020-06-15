@@ -16,7 +16,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "inventorybook")
+@Document(collection = "librarybookinventory")
 public class InventoryBookDocument extends AuditEntity {
 
 	@Field("ShelfRackPosition")

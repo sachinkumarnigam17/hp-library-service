@@ -16,7 +16,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "issuedbookdocument")
+@Document(collection = "libraryissuedbook")
 public class IssuedBookDocument extends AuditEntity {
 
 	@Field("UserId")

@@ -90,7 +90,6 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 					libraryBookRequest.getAuthor(), libraryBookRequest.getPublication(),
 					libraryBookRequest.getSubject(), libraryBookRequest.getCategory(),
 					libraryBookRequest.getKeywords());
-			bookDocument = bookDocumentRepository.save(bookDocument);
 			List<InventoryBookDocument> inventoryBookDocuments = prepareInventoryBookDocument(libraryBookRequest,
 					bookDocument);
 			inventoryBookDocumentRepository.saveAll(inventoryBookDocuments);

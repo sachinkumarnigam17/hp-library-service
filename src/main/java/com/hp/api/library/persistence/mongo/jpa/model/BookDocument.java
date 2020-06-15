@@ -1,6 +1,5 @@
 package com.hp.api.library.persistence.mongo.jpa.model;
 
-import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
 import com.hp.persistence.jpa.mongo.model.base.AuditEntity;
@@ -14,7 +13,6 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "bookdocument")
 public class BookDocument extends AuditEntity {
 
 	@Field("Title")

@@ -38,7 +38,7 @@ public class LibraryBookRequest extends BaseRequest {
 
 	@NotNull(message = "publication can't be empty")
 	@JsonProperty("publication")
-	private String Publication;// drop down(cos of mispelling)
+	private String Publication;
 
 	@NotNull(message = "subject can't be empty")
 	@JsonProperty("subject")
