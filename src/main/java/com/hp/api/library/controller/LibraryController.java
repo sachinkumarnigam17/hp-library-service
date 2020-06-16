@@ -9,14 +9,13 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.hp.api.framework.service.core.controller.AppController;
+import com.hp.api.library.entity.request.AddBookRequest;
+import com.hp.api.library.entity.request.EditBookRequest;
 import com.hp.api.library.entity.request.GetInventoryBookRequest;
-import com.hp.api.library.entity.request.InventoryBookRequest;
 import com.hp.api.library.entity.request.InventorySortingRequest;
 import com.hp.api.library.entity.request.IssueBookRequest;
-import com.hp.api.library.entity.request.LibraryBookRequest;
 import com.hp.api.library.entity.request.LibraryPolicyRequest;
 import com.hp.api.library.entity.response.LibraryResponse;
 import com.hp.api.library.service.api.LibraryService;
@@ -29,17 +28,15 @@ public class LibraryController extends AppController {
 	private LibraryService libraryService;
 
 	@RequestMapping(value = "/add_book", method = RequestMethod.POST)
-	public LibraryResponse addBook(@RequestPart("libraryBookRequest") @Valid LibraryBookRequest libraryBookRequest,
-			@RequestParam("bookImage") MultipartFile[] bookImage) {
-		libraryBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.addBook(libraryBookRequest, bookImage);
+	public LibraryResponse addBook(@RequestPart("addBookRequest") @Valid AddBookRequest addBookRequest) {
+		addBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.addBook(addBookRequest);
 	}
 
 	@RequestMapping(value = "/edit_book", method = RequestMethod.POST)
-	public LibraryResponse editBook(@RequestPart("libraryBookRequest") @Valid InventoryBookRequest inventoryBookRequest,
-			@RequestParam("bookImage") MultipartFile[] bookImage) {
-		inventoryBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-		return libraryService.editBook(inventoryBookRequest, bookImage);
+	public LibraryResponse editBook(@RequestBody @Valid EditBookRequest editBookRequest) {
+		editBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
+		return libraryService.editBook(editBookRequest);
 	}
 
 	@RequestMapping(value = "/get_book", method = RequestMethod.POST)
@@ -93,12 +90,6 @@ public class LibraryController extends AppController {
 		issueBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
 		return libraryService.issueBook(issueBookRequest);
 	}
-
-//	@RequestMapping(value = "/edit_issue_book", method = RequestMethod.POST)
-//	public LibraryResponse editIssueBook(@RequestBody @Valid IssueBookRequest issueBookRequest) {
-//		issueBookRequest.setUserRequestIdentity(userDetailsService.getUserRequestIdentityFromSecurity());
-//		return libraryService.editIssueBook(issueBookRequest);
-//	}
 
 	@RequestMapping(value = "/delete_issue_book", method = RequestMethod.POST)
 	public LibraryResponse deleteIssuedBook(@RequestParam("issueBookId") @Valid String issueBookId) {

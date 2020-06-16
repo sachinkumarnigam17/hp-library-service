@@ -4,7 +4,6 @@ import java.util.List;
 
 import com.hp.api.library.entity.model.InventoryBookModel;
 import com.hp.api.library.entity.model.IssuedBooksModel;
-import com.hp.api.library.entity.model.LibraryUserModel;
 import com.hp.api.library.entity.model.ReturnBookModel;
 import com.hp.api.library.entity.model.SchoolLibraryPolicyModel;
 import com.hp.api.library.persistence.mongo.jpa.model.InventoryBookDocument;
@@ -21,8 +20,6 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LibraryResponse extends BaseResponse {
-
-	LibraryUserModel libraryUserModel;
 
 	SchoolLibraryPolicyModel schoolLibraryPolicyModel;
 

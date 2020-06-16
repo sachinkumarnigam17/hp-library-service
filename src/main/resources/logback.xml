@@ -72,9 +72,13 @@
 	<root level="ERROR">
 		<appender-ref ref="ERROR_FILE" />
 	</root>
-<!--	<root level="INFO">-->
-<!--		<appender-ref ref="INFO_FILE" />-->
-<!--		<appender-ref ref="STDOUT" />-->
-<!--	</root>-->
+	<root level="INFO">
+		-->
+		<appender-ref ref="INFO_FILE" />
+		-->
+		<appender-ref ref="STDOUT" />
+		-->
+	</root>
+	-->
 
 </configuration>

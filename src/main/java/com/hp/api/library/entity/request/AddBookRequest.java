@@ -17,7 +17,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class LibraryBookRequest extends BaseRequest {
+public class AddBookRequest extends BaseRequest {
 
 	@JsonProperty("id")
 	private String id;
@@ -38,7 +38,7 @@ public class LibraryBookRequest extends BaseRequest {
 
 	@NotNull(message = "publication can't be empty")
 	@JsonProperty("publication")
-	private String Publication;
+	private String publication;
 
 	@NotNull(message = "subject can't be empty")
 	@JsonProperty("subject")

@@ -52,6 +52,9 @@ public class InventoryBookDocument extends AuditEntity {
 	@Field("IsIssue")
 	private Boolean IsIssue;
 
+	@Field("SchoolId")
+	private String schoolId;
+
 	@Field("BookDocument")
 	private BookDocument bookDocument;
 }

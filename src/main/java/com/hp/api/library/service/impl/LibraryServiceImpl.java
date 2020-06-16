@@ -13,7 +13,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.hp.api.framework.service.core.annotation.Timed;
 import com.hp.api.framework.service.core.constant.AppConstant;
@@ -25,12 +24,12 @@ import com.hp.api.library.entity.model.InventoryBookModel;
 import com.hp.api.library.entity.model.IssuedBooksModel;
 import com.hp.api.library.entity.model.ReturnBookModel;
 import com.hp.api.library.entity.model.SchoolLibraryPolicyModel;
+import com.hp.api.library.entity.request.AddBookRequest;
+import com.hp.api.library.entity.request.EditBookRequest;
 import com.hp.api.library.entity.request.EmbeddedBookRequest;
 import com.hp.api.library.entity.request.GetInventoryBookRequest;
-import com.hp.api.library.entity.request.InventoryBookRequest;
 import com.hp.api.library.entity.request.InventorySortingRequest;
 import com.hp.api.library.entity.request.IssueBookRequest;
-import com.hp.api.library.entity.request.LibraryBookRequest;
 import com.hp.api.library.entity.request.LibraryPolicyRequest;
 import com.hp.api.library.entity.response.LibraryResponse;
 import com.hp.api.library.persistence.mongo.jpa.model.BookDocument;
@@ -70,12 +69,12 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 	private MongoTemplate mongoTemplate;
 
 	@Timed
-	public LibraryResponse addBook(LibraryBookRequest libraryBookRequest, MultipartFile[] bookImage) {
+	public LibraryResponse addBook(AddBookRequest addBookRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 
 		try {
 			List<String> iSBNs = new ArrayList<String>();
-			List<EmbeddedBookRequest> embeddedBookRequests = libraryBookRequest.getEmbeddedBooks();
+			List<EmbeddedBookRequest> embeddedBookRequests = addBookRequest.getEmbeddedBooks();
 			embeddedBookRequests.parallelStream().forEach(embeddedBook -> {
 				InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
 						.findByISBN(embeddedBook.getISBN());
@@ -86,12 +85,27 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 			if (iSBNs != null && !(iSBNs.isEmpty())) {
 				throw new AppCommonException("these ISBN books already exists" + iSBNs);
 			}
-			BookDocument bookDocument = new BookDocument(libraryBookRequest.getTitle(), libraryBookRequest.getRemarks(),
-					libraryBookRequest.getAuthor(), libraryBookRequest.getPublication(),
-					libraryBookRequest.getSubject(), libraryBookRequest.getCategory(),
-					libraryBookRequest.getKeywords());
-			List<InventoryBookDocument> inventoryBookDocuments = prepareInventoryBookDocument(libraryBookRequest,
-					bookDocument);
+			List<InventoryBookDocument> inventoryBookDocuments = new ArrayList<InventoryBookDocument>();
+			Query query = new Query();
+			query.addCriteria(Criteria.where("SchoolId").is(addBookRequest.getUserRequestIdentity().getId()));
+			query.addCriteria(Criteria.where("DeletedAt").is(null));
+			query.addCriteria(Criteria.where("BookDocument.Title").is(addBookRequest.getTitle()));
+			query.addCriteria(Criteria.where("BookDocument.Author").is(addBookRequest.getAuthor()));
+			query.addCriteria(Criteria.where("BookDocument.Publication").is(addBookRequest.getPublication()));
+			query.addCriteria(Criteria.where("BookDocument.Subject").is(addBookRequest.getSubject()));
+			List<InventoryBookDocument> inventoryBookDocumentsOld = mongoTemplate.find(query,
+					InventoryBookDocument.class);
+			if (!CommonUtil.isEmpty(inventoryBookDocumentsOld)) {
+
+				inventoryBookDocuments = prepareInventoryBookDocument(addBookRequest,
+						inventoryBookDocumentsOld.get(0).getBookDocument());
+			} else {
+				BookDocument bookDocument = new BookDocument(MongoCommonUtil.newObjectIdString(),
+						addBookRequest.getTitle(), addBookRequest.getRemarks(), addBookRequest.getAuthor(),
+						addBookRequest.getPublication(), addBookRequest.getSubject(), addBookRequest.getCategory(),
+						addBookRequest.getKeywords());
+				inventoryBookDocuments = prepareInventoryBookDocument(addBookRequest, bookDocument);
+			}
 			inventoryBookDocumentRepository.saveAll(inventoryBookDocuments);
 
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
@@ -104,18 +118,19 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 		return libraryResponse;
 	}
 
-	private List<InventoryBookDocument> prepareInventoryBookDocument(LibraryBookRequest libraryBookRequest,
+	private List<InventoryBookDocument> prepareInventoryBookDocument(AddBookRequest addBookRequest,
 			BookDocument bookDocument) {
 
 		List<InventoryBookDocument> inventoryBookDocuments = new ArrayList<InventoryBookDocument>();
 
-		for (EmbeddedBookRequest embeddedBookRequest : libraryBookRequest.getEmbeddedBooks()) {
+		for (EmbeddedBookRequest embeddedBookRequest : addBookRequest.getEmbeddedBooks()) {
 
 			InventoryBookDocument inventoryBookDocument = new InventoryBookDocument(
-					embeddedBookRequest.getShelfRackPosition(), libraryBookRequest.getCost(),
-					libraryBookRequest.getYearOfPublication(), libraryBookRequest.getEdition(),
-					libraryBookRequest.getPurchasing_Date(), libraryBookRequest.getPages(), null, false,
-					embeddedBookRequest.getDDC(), embeddedBookRequest.getISBN(), false, bookDocument);
+					embeddedBookRequest.getShelfRackPosition(), addBookRequest.getCost(),
+					addBookRequest.getYearOfPublication(), addBookRequest.getEdition(),
+					addBookRequest.getPurchasing_Date(), addBookRequest.getPages(), null, false,
+					embeddedBookRequest.getDDC(), embeddedBookRequest.getISBN(), false,
+					addBookRequest.getUserRequestIdentity().getSchoolId(), bookDocument);
 			inventoryBookDocument.setCreatedAt(new Date());
 			inventoryBookDocument.setUpdatedAt(new Date());
 			inventoryBookDocuments.add(inventoryBookDocument);
@@ -125,19 +140,19 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 	}
 
 	@Timed
-	public LibraryResponse editBook(InventoryBookRequest inventoryBookRequest, MultipartFile[] bookImage) {
+	public LibraryResponse editBook(EditBookRequest editBookRequest) {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
-			if (!inventoryBookRequest.getApplyChangesInAllSameEditionBooks()) {
-				InventoryBookDocument inventoryBookDocument = prepareInventoryBookDocument(inventoryBookRequest);
+			InventoryBookDocument inventoryBookDocument = new InventoryBookDocument();
+			List<InventoryBookDocument> inventoryBookDocumentsSE = new ArrayList<InventoryBookDocument>();
+			if (CommonUtil.isEmpty(editBookRequest.getEditionOld())) {
+				inventoryBookDocument = prepareInventoryBookDocument(editBookRequest);
 				inventoryBookDocumentRepository.save(inventoryBookDocument);
 			} else {
-				List<InventoryBookDocument> inventoryBookDocuments = prepareInventoryBookDocumentList(
-						inventoryBookRequest);
-				inventoryBookDocumentRepository.saveAll(inventoryBookDocuments);
-
+				inventoryBookDocumentsSE = prepareInventoryBookDocumentListOfSameEdition(editBookRequest);
+				inventoryBookDocumentRepository.saveAll(inventoryBookDocumentsSE);
 			}
-			List<InventoryBookDocument> inventoryBookDocuments = updateBookDocument(inventoryBookRequest);
+			List<InventoryBookDocument> inventoryBookDocuments = updateBookDocument(editBookRequest);
 			inventoryBookDocumentRepository.saveAll(inventoryBookDocuments);
 
 			libraryResponse.setStatus(ResponseStatus.SUCCESS);
@@ -150,17 +165,17 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 		return libraryResponse;
 	}
 
-	private List<InventoryBookDocument> updateBookDocument(InventoryBookRequest inventoryBookRequest) {
+	private List<InventoryBookDocument> updateBookDocument(EditBookRequest editBookRequest) {
 		Query query = new Query();
-		query.addCriteria(Criteria.where("IsDelete").is(false));
-		query.addCriteria(Criteria.where("BookDocument.Title").is(inventoryBookRequest.getBookRequest().getTitle()));
-		query.addCriteria(Criteria.where("BookDocument.Author").is(inventoryBookRequest.getBookRequest().getAuthor()));
+		query.addCriteria(Criteria.where("SchoolId").is(editBookRequest.getUserRequestIdentity().getSchoolId()));
+		query.addCriteria(Criteria.where("DeletedAt").is(null));
+		query.addCriteria(Criteria.where("BookDocument.Id").is(editBookRequest.getBookRequest().getId()));
 		List<InventoryBookDocument> inventoryBookDocuments = mongoTemplate.find(query, InventoryBookDocument.class);
-		BookDocument bookDocument = new BookDocument(inventoryBookRequest.getBookRequest().getTitle(),
-				inventoryBookRequest.getBookRequest().getRemarks(), inventoryBookRequest.getBookRequest().getAuthor(),
-				inventoryBookRequest.getBookRequest().getPublication(),
-				inventoryBookRequest.getBookRequest().getSubject(), inventoryBookRequest.getBookRequest().getCategory(),
-				inventoryBookRequest.getBookRequest().getKeywords());
+		BookDocument bookDocument = new BookDocument(editBookRequest.getBookRequest().getId(),
+				editBookRequest.getBookRequest().getTitle(), editBookRequest.getBookRequest().getRemarks(),
+				editBookRequest.getBookRequest().getAuthor(), editBookRequest.getBookRequest().getPublication(),
+				editBookRequest.getBookRequest().getSubject(), editBookRequest.getBookRequest().getCategory(),
+				editBookRequest.getBookRequest().getKeywords());
 		if (!CommonUtil.isEmpty(inventoryBookDocuments)) {
 			inventoryBookDocuments.parallelStream().forEach(inventoryBookDocument -> {
 				inventoryBookDocument.setBookDocument(bookDocument);
@@ -169,40 +184,56 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 		return inventoryBookDocuments;
 	}
 
-	private List<InventoryBookDocument> prepareInventoryBookDocumentList(InventoryBookRequest inventoryBookRequest) {
+	private List<InventoryBookDocument> prepareInventoryBookDocumentListOfSameEdition(EditBookRequest editBookRequest)
+			throws AppCommonException {
 		Query query = new Query();
-		query.addCriteria(Criteria.where("IsDelete").is(false));
-		query.addCriteria(Criteria.where("Edition").is(inventoryBookRequest.getEdition()));
-		query.addCriteria(Criteria.where("BookDocument.Title").is(inventoryBookRequest.getBookRequest().getTitle()));
-		query.addCriteria(Criteria.where("BookDocument.Author").is(inventoryBookRequest.getBookRequest().getAuthor()));
+		query.addCriteria(Criteria.where("SchoolId").is(editBookRequest.getUserRequestIdentity().getSchoolId()));
+		query.addCriteria(Criteria.where("DeletedAt").is(null));
+		query.addCriteria(Criteria.where("Edition").is(editBookRequest.getEditionOld()));
+		query.addCriteria(Criteria.where("BookDocument.Id").is(editBookRequest.getBookRequest().getId()));
 		List<InventoryBookDocument> inventoryBookDocuments = mongoTemplate.find(query, InventoryBookDocument.class);
-		List<InventoryBookDocument> inventoryBookDocumentList = new ArrayList<InventoryBookDocument>();
 		if (CommonUtil.isEmpty(inventoryBookDocuments)) {
+			throw new AppCommonException("provide valid book document Id");
+		}
+		List<InventoryBookDocument> inventoryBookDocumentList = new ArrayList<InventoryBookDocument>();
+		if (!CommonUtil.isEmpty(inventoryBookDocuments)) {
 			inventoryBookDocuments.parallelStream().forEach(inventoryBookDocument -> {
+				if (inventoryBookDocument.getId().equals(editBookRequest.getId())) {
+					inventoryBookDocument.setDDC(editBookRequest.getDDC());
+					inventoryBookDocument.setISBN(editBookRequest.getISBN());
+					if (!CommonUtil.isEmpty(editBookRequest.getShelfRackPosition())) {
+						inventoryBookDocument.setShelfRackPosition(editBookRequest.getShelfRackPosition());
+					}
+				}
 				InventoryBookDocument inventoryBookDocumentUpdated = new InventoryBookDocument(
-						inventoryBookRequest.getShelfRackPosition(), inventoryBookRequest.getCost(),
-						inventoryBookRequest.getYearOfPublication(), inventoryBookRequest.getEdition(),
-						inventoryBookRequest.getPurchasing_Date(), inventoryBookRequest.getPages(), null, false,
+						inventoryBookDocument.getShelfRackPosition(), editBookRequest.getCost(),
+						editBookRequest.getYearOfPublication(), editBookRequest.getEdition(),
+						editBookRequest.getPurchasing_Date(), editBookRequest.getPages(), null, false,
 						inventoryBookDocument.getDDC(), inventoryBookDocument.getISBN(),
-						inventoryBookDocument.getIsIssue(), inventoryBookDocument.getBookDocument());
+						inventoryBookDocument.getIsIssue(), editBookRequest.getUserRequestIdentity().getSchoolId(),
+						inventoryBookDocument.getBookDocument());
 				inventoryBookDocumentUpdated.setId(inventoryBookDocument.getId());
 
 				inventoryBookDocumentList.add(inventoryBookDocumentUpdated);
 			});
+
 		}
-		return inventoryBookDocuments;
+		return inventoryBookDocumentList;
 	}
 
-	private InventoryBookDocument prepareInventoryBookDocument(InventoryBookRequest inventoryBookRequest) {
+	private InventoryBookDocument prepareInventoryBookDocument(EditBookRequest editBookRequest)
+			throws AppCommonException {
 		InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
-				.findByISBN(inventoryBookRequest.getISBN());
-
+				.findById(MongoCommonUtil.convertStringToObjectId(editBookRequest.getId()));
+		if (inventoryBookDocument == null) {
+			throw new AppCommonException("provide valid book id");
+		}
 		InventoryBookDocument inventoryBookDocumentUpdated = new InventoryBookDocument(
-				inventoryBookRequest.getShelfRackPosition(), inventoryBookRequest.getCost(),
-				inventoryBookRequest.getYearOfPublication(), inventoryBookRequest.getEdition(),
-				inventoryBookRequest.getPurchasing_Date(), inventoryBookRequest.getPages(), null, false,
-				inventoryBookRequest.getDDC(), inventoryBookRequest.getISBN(), inventoryBookDocument.getIsIssue(),
-				inventoryBookDocument.getBookDocument());
+				editBookRequest.getShelfRackPosition(), editBookRequest.getCost(),
+				editBookRequest.getYearOfPublication(), editBookRequest.getEdition(),
+				editBookRequest.getPurchasing_Date(), editBookRequest.getPages(), null, false, editBookRequest.getDDC(),
+				editBookRequest.getISBN(), inventoryBookDocument.getIsIssue(),
+				editBookRequest.getUserRequestIdentity().getSchoolId(), inventoryBookDocument.getBookDocument());
 		inventoryBookDocumentUpdated.setId(inventoryBookDocument.getId());
 		return inventoryBookDocumentUpdated;
 	}
@@ -213,6 +244,9 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 		try {
 			InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository
 					.findById(MongoCommonUtil.convertStringToObjectId(bookId));
+			if (inventoryBookDocument == null) {
+				throw new AppCommonException("provide valid id");
+			}
 			inventoryBookDocument.setDeletedAt(new Date());
 			inventoryBookDocument.setIsDelete(true);
 			inventoryBookDocumentRepository.save(inventoryBookDocument);
@@ -233,6 +267,10 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
 			Query query = new Query();
+			query.addCriteria(Criteria.where("DeletedAt").is(null));
+			query.addCriteria(
+					Criteria.where("SchoolId").is(getInventoryBookRequest.getUserRequestIdentity().getSchoolId()));
+
 			if (!CommonUtil.isEmpty(getInventoryBookRequest.getTitle())) {
 				query.addCriteria(Criteria.where("BookDocument.Title").is(getInventoryBookRequest.getTitle()));
 			}
@@ -274,7 +312,12 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 		LibraryResponse libraryResponse = new LibraryResponse();
 		try {
 			InventoryBookDocument inventoryBookDocument = inventoryBookDocumentRepository.findByISBN(iSBN);
+			if(inventoryBookDocument==null) {
+				throw new AppCommonException("provide valid ISBN");
+			}
 			libraryResponse.setInventoryBookDocument(inventoryBookDocument);
+			libraryResponse.setStatus(ResponseStatus.SUCCESS);
+
 		} catch (Exception e) {
 
 			logger.error("error while getting library book details", e);
@@ -477,10 +520,6 @@ public class LibraryServiceImpl extends BaseService implements LibraryService {
 			query.addCriteria(Criteria.where("Return").is(false));
 			query.addCriteria(Criteria.where("SchoolId").is(baseRequest.getUserRequestIdentity().getSchoolId()));
 			List<IssuedBookDocument> issuedBookDocuments = mongoTemplate.find(query, IssuedBookDocument.class);
-//			System.out.println(query);
-//			List<IssuedBookDocument> issuedBookDocuments1 = issuedBookDocumentRepository
-//					.findBySchoolIdAndReturnFalseAndDeletedAtNull(
-//							baseRequest.getUserRequestIdentity().getSchoolId());
 			if (!CommonUtil.isEmpty(issuedBookDocuments))
 				libraryResponse.setIssuedBookDocuments(issuedBookDocuments);
 			else

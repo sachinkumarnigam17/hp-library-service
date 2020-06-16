@@ -16,7 +16,10 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class InventoryBookRequest extends BaseRequest {
+public class EditBookRequest extends BaseRequest {
+
+	@JsonProperty("id")
+	private String id;
 
 	@JsonProperty("shelf_rack_position")
 	private String shelfRackPosition;
@@ -31,18 +34,21 @@ public class InventoryBookRequest extends BaseRequest {
 	@JsonProperty("edition")
 	private String edition;
 
+	@JsonProperty("edition_old")
+	private String editionOld;
+
 	@JsonProperty("purchasing_date")
 	private Date purchasing_Date;
 
+	@NotNull(message = "pages can't be empty")
 	@JsonProperty("pages")
 	private String pages;
 
+	@NotNull(message = "dDC can't be empty")
 	@JsonProperty("dDC")
 	private String dDC;
 
-	@JsonProperty("apply_changes_in_all_same_edition_books")
-	private Boolean applyChangesInAllSameEditionBooks;
-
+	@NotNull(message = "iSBN can't be empty")
 	@JsonProperty("iSBN")
 	private String iSBN;
 

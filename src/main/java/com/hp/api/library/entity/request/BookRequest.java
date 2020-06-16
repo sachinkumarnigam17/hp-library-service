@@ -16,6 +16,9 @@ import lombok.Setter;
 @AllArgsConstructor
 public class BookRequest extends BaseRequest {
 
+	@JsonProperty("id")
+	private String id;
+
 	@NotNull(message = "title can't be empty")
 	@JsonProperty("title")
 	private String title;
@@ -39,6 +42,7 @@ public class BookRequest extends BaseRequest {
 	@JsonProperty("category")
 	private String category;
 
+	@NotNull(message = "keywords can't be empty")
 	@JsonProperty("keywords")
 	private String keywords;
 

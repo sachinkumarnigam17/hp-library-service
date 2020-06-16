@@ -19,6 +19,10 @@ public interface InventoryBookDocumentRepository extends BaseMongoRepository<Inv
 	@Query("{'bookDocument.title': ?0}")
 	List<InventoryBookDocument> findByTitle(String string);
 
-	
-}
+	@Query("{'schoolId':?0,'edition':?1,'bookDocument.id': ?2 ,'DeletedAt':null}")
+	List<InventoryBookDocument> findBySchoolIdAndEditionAndIdAndDeletedAtNull(String schoolId, String edition,
+			String id);
 
+	@Query("{'bookDocument.id': ?0}")
+	List<InventoryBookDocument> findByid(String string);
+}

@@ -1,5 +1,7 @@
 package com.hp.api.library.entity.request;
 
+import javax.validation.constraints.NotNull;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import lombok.AllArgsConstructor;
@@ -13,9 +15,11 @@ import lombok.Setter;
 @AllArgsConstructor
 public class EmbeddedBookRequest {
 
+	@NotNull(message = "dDC can't be empty")
 	@JsonProperty("dDC")
 	private String dDC;
 
+	@NotNull(message = "iSBN can't be empty")
 	@JsonProperty("iSBN")
 	private String iSBN;
 

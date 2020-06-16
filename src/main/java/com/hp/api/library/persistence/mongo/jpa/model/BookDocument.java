@@ -15,6 +15,9 @@ import lombok.Setter;
 @AllArgsConstructor
 public class BookDocument extends AuditEntity {
 
+	@Field("id")
+	private String id;
+
 	@Field("Title")
 	private String title;
 
@@ -25,7 +28,7 @@ public class BookDocument extends AuditEntity {
 	private String author;
 
 	@Field("Publication")
-	private String Publication;
+	private String publication;
 
 	@Field("Subject")
 	private String subject;

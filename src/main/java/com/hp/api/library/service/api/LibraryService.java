@@ -1,21 +1,19 @@
 package com.hp.api.library.service.api;
 
-import org.springframework.web.multipart.MultipartFile;
-
+import com.hp.api.library.entity.request.AddBookRequest;
+import com.hp.api.library.entity.request.EditBookRequest;
 import com.hp.api.library.entity.request.GetInventoryBookRequest;
-import com.hp.api.library.entity.request.InventoryBookRequest;
 import com.hp.api.library.entity.request.InventorySortingRequest;
 import com.hp.api.library.entity.request.IssueBookRequest;
-import com.hp.api.library.entity.request.LibraryBookRequest;
 import com.hp.api.library.entity.request.LibraryPolicyRequest;
 import com.hp.api.library.entity.response.LibraryResponse;
 import com.hp.entity.request.base.BaseRequest;
 
 public interface LibraryService {
 
-	LibraryResponse addBook(LibraryBookRequest libraryBookRequest, MultipartFile[] bookImage);
+	LibraryResponse addBook(AddBookRequest addBookRequest);
 
-	LibraryResponse editBook(InventoryBookRequest inventoryBookRequest, MultipartFile[] bookImage);
+	LibraryResponse editBook(EditBookRequest editBookRequest);
 
 	LibraryResponse deleteBook(String bookId, BaseRequest baseRequest);
 
